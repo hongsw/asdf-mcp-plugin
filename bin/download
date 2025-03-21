@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+GH_REPO="https://github.com/model-context-protocol/mcp"
+TOOL_NAME="mcp"
+TOOL_TEST="mcp --version"
+
+fail() {
+  echo -e "asdf-$TOOL_NAME: $*"
+  exit 1
+}
+
+curl_opts=(-fsSL)
+
+# NOTE: You might want to remove this if the tool is not hosted on GitHub releases.
+if [ -n "${GITHUB_API_TOKEN:-}" ]; then
+  curl_opts=("${curl_opts[@]}" -H "Authorization: token $GITHUB_API_TOKEN")
+fi
+
+get_platform() {
+  uname | tr '[:upper:]' '[:lower:]'
+}
+
+get_arch() {
+  local arch
+  arch=$(uname -m)
+  case $arch in
+    x86_64) arch="amd64" ;;
+    aarch64) arch="arm64" ;;
+    *) arch="$arch" ;;
+  esac
+  echo "$arch"
+}
+
+download_release() {
+  local version filename url
+  version="$1"
+  filename="$2"
+
+  # Example URL: https://github.com/model-context-protocol/mcp/releases/download/v${version}/mcp-${version}-linux-amd64.tar.gz
+  url="$GH_REPO/releases/download/v${version}/${TOOL_NAME}-${version}-$(get_platform)-$(get_arch).tar.gz"
+
+  echo "* Downloading $TOOL_NAME release $version..."
+  curl "${curl_opts[@]}" -o "$filename" -C - "$url" || fail "Could not download $url"
+}
+
+extract_tarball() {
+  local filename="$1"
+  local download_path="$2"
+
+  echo "* Extracting $filename..."
+  mkdir -p "$download_path"
+  tar -xzf "$filename" -C "$download_path" --strip-components=1 || fail "Could not extract $filename"
+  rm "$filename"
+}
+
+download_and_extract() {
+  local version="$1"
+  local download_path="$2"
+  local tmp_filename="$3"
+
+  download_release "$version" "$tmp_filename"
+  extract_tarball "$tmp_filename" "$download_path"
+}
+
+download() {
+  local version="$1"
+  local download_path="$2"
+  local tmp_download_dir
+  local tmp_filename
+
+  tmp_download_dir=$(mktemp -d)
+  tmp_filename="$tmp_download_dir/${TOOL_NAME}-$version.tar.gz"
+
+  download_and_extract "$version" "$download_path" "$tmp_filename"
+}
+
+download "$ASDF_INSTALL_VERSION" "$ASDF_DOWNLOAD_PATH"
